@@ -7,7 +7,7 @@ inputs:
     default: main
   language:
     description: Language for version detection
-    required: true
+    required: false
   github-token:
     description: GitHub token used to create and update releases
     required: true
@@ -16,6 +16,9 @@ inputs:
     description: Prefix to apply to the release tag (set to empty for raw version)
     required: false
     default: v
+  config-file:
+    description: Optional path to a release-drafter style config file
+    required: false
 runs:
   using: "docker"
   image: "Dockerfile"

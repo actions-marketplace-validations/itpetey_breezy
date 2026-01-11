@@ -9,8 +9,6 @@ const API_BASE: &str = "https://api.github.com";
 #[derive(Debug, Deserialize)]
 pub struct ReleaseInfo {
     pub id: u64,
-    pub name: Option<String>,
-    pub tag_name: String,
     pub body: Option<String>,
     pub draft: bool,
     pub target_commitish: String,
@@ -27,7 +25,19 @@ struct SearchResponse {
 struct SearchItem {
     number: u64,
     title: String,
+    user: Option<SearchUser>,
+    labels: Vec<SearchLabel>,
     merged_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchUser {
+    login: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchLabel {
+    name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -225,6 +235,11 @@ impl GitHubClient {
             pull_requests.extend(data.items.into_iter().map(|item| PullRequestInfo {
                 number: item.number,
                 title: item.title,
+                author: item
+                    .user
+                    .map(|user| user.login)
+                    .unwrap_or_else(|| "unknown".to_string()),
+                labels: item.labels.into_iter().map(|label| label.name).collect(),
                 merged_at: item.merged_at,
             }));
 

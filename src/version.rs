@@ -1,13 +1,11 @@
 use anyhow::{anyhow, bail, Result};
 use serde_json::Value;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct VersionInfo {
-    pub language: String,
     pub version: String,
-    pub file: PathBuf,
 }
 
 fn parse_cargo_version(content: &str) -> Option<String> {
@@ -58,11 +56,7 @@ fn resolve_rust_version(cwd: &Path) -> Result<Option<VersionInfo>> {
     let version = parse_cargo_version(&content)
         .ok_or_else(|| anyhow!("Cargo.toml does not declare a [package] version."))?;
 
-    Ok(Some(VersionInfo {
-        language: "rust".to_string(),
-        version,
-        file,
-    }))
+    Ok(Some(VersionInfo { version }))
 }
 
 fn resolve_node_version(cwd: &Path) -> Result<Option<VersionInfo>> {
@@ -79,9 +73,7 @@ fn resolve_node_version(cwd: &Path) -> Result<Option<VersionInfo>> {
         .ok_or_else(|| anyhow!("package.json does not declare a version field."))?;
 
     Ok(Some(VersionInfo {
-        language: "node".to_string(),
         version: version.to_string(),
-        file,
     }))
 }
 

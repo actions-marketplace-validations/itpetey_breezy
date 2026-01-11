@@ -1,8 +1,10 @@
+mod config;
 mod github;
 mod release_notes;
 mod version;
 
 use anyhow::{anyhow, bail, Context, Result};
+use config::ReleaseConfig;
 use github::ReleaseInfo;
 use release_notes::{build_release_notes, release_marker};
 use std::env;
@@ -24,7 +26,6 @@ fn main() {
 
 fn run() -> Result<()> {
     let branch = required_input("branch")?;
-    let language_input = required_input("language")?;
     let tag_prefix = read_input("tag-prefix").unwrap_or_else(|| "v".to_string());
     let token = read_input("github-token")
         .or_else(|| env::var("GITHUB_TOKEN").ok())
@@ -34,15 +35,18 @@ fn run() -> Result<()> {
         bail!("Missing GitHub token. Set the github-token input or GITHUB_TOKEN env.");
     }
 
-    let languages = parse_languages(&language_input);
+    let cwd = env::current_dir().context("Unable to resolve current working directory.")?;
+    let config = config::load_config(read_input("config-file"), &cwd)?;
+    let language_input = read_input("language").unwrap_or_default();
+    let language_source = resolve_language(&language_input, config.as_ref())?;
+    let languages = parse_languages(&language_source);
     if languages.is_empty() {
         bail!("No language archetypes provided.");
     }
 
-    let cwd = env::current_dir().context("Unable to resolve current working directory.")?;
     let version_info = resolve_version(&cwd, &languages)?;
 
-    let tag_name = format!("{}{}", tag_prefix.trim(), version_info.version);
+    let tag_name = resolve_tag_name(&version_info.version, &tag_prefix, config.as_ref());
     let release_name = format!("{tag_name} ({branch})");
     let marker = release_marker(&branch);
 
@@ -63,7 +67,7 @@ fn run() -> Result<()> {
 
     let pull_requests =
         client.fetch_merged_pull_requests(&branch, since.as_deref(), MAX_PER_PAGE)?;
-    let release_notes = build_release_notes(&marker, &pull_requests);
+    let release_notes = build_release_notes(&marker, &pull_requests, config.as_ref());
 
     if let Some(release_id) = selection.primary {
         client.update_release(
@@ -109,6 +113,29 @@ fn required_input(name: &str) -> Result<String> {
         bail!("Missing required input: {name}");
     }
     Ok(trimmed.to_string())
+}
+
+fn resolve_language(input: &str, config: Option<&ReleaseConfig>) -> Result<String> {
+    if !input.trim().is_empty() {
+        return Ok(input.trim().to_string());
+    }
+    if let Some(config) = config {
+        if let Some(language) = &config.language {
+            if !language.trim().is_empty() {
+                return Ok(language.trim().to_string());
+            }
+        }
+    }
+    bail!("Missing required input: language");
+}
+
+fn resolve_tag_name(version: &str, tag_prefix: &str, config: Option<&ReleaseConfig>) -> String {
+    if let Some(config) = config {
+        if let Some(template) = &config.tag_template {
+            return template.replace("$VERSION", version);
+        }
+    }
+    format!("{}{}", tag_prefix.trim(), version)
 }
 
 fn parse_repository() -> Result<(String, String)> {
