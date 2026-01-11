@@ -31,14 +31,13 @@ fn parse_cargo_version(content: &str) -> Option<String> {
             if let Some(rest) = rest.strip_prefix('=') {
                 let value = rest.trim_start();
                 let quote = value.chars().next();
-                if let Some(quote_char) = quote {
-                    if quote_char == '"' || quote_char == '\'' {
+                if let Some(quote_char) = quote
+                    && (quote_char == '"' || quote_char == '\'') {
                         let remainder = &value[quote_char.len_utf8()..];
                         if let Some(end) = remainder.find(quote_char) {
                             return Some(remainder[..end].to_string());
                         }
                     }
-                }
             }
         }
     }

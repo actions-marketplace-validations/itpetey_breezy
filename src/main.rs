@@ -103,11 +103,10 @@ fn read_input(name: &str) -> Option<String> {
     }
 
     let alternate = key.replace('-', "_");
-    if alternate != key {
-        if let Ok(value) = env::var(&alternate) {
+    if alternate != key
+        && let Ok(value) = env::var(&alternate) {
             return Some(value);
         }
-    }
 
     None
 }
@@ -116,22 +115,19 @@ fn resolve_language(input: &str, config: Option<&ReleaseConfig>) -> Result<Strin
     if !input.trim().is_empty() {
         return Ok(input.trim().to_string());
     }
-    if let Some(config) = config {
-        if let Some(language) = &config.language {
-            if !language.trim().is_empty() {
+    if let Some(config) = config
+        && let Some(language) = &config.language
+            && !language.trim().is_empty() {
                 return Ok(language.trim().to_string());
             }
-        }
-    }
     bail!("Missing required input: language");
 }
 
 fn resolve_tag_name(version: &str, tag_prefix: &str, config: Option<&ReleaseConfig>) -> String {
-    if let Some(config) = config {
-        if let Some(template) = &config.tag_template {
+    if let Some(config) = config
+        && let Some(template) = &config.tag_template {
             return template.replace("$VERSION", version);
         }
-    }
     format!("{}{}", tag_prefix.trim(), version)
 }
 
@@ -141,11 +137,10 @@ fn resolve_release_name(
     branch: &str,
     config: Option<&ReleaseConfig>,
 ) -> String {
-    if let Some(config) = config {
-        if let Some(template) = &config.name_template {
+    if let Some(config) = config
+        && let Some(template) = &config.name_template {
             return template.replace("$VERSION", version);
         }
-    }
     format!("{tag_name} ({branch})")
 }
 
@@ -184,14 +179,13 @@ fn resolve_branch() -> Result<String> {
         if let Some(stripped) = trimmed.strip_prefix("refs/heads/") {
             return Ok(stripped.to_string());
         }
-        if trimmed.starts_with("refs/pull/") {
-            if let Ok(head) = env::var("GITHUB_HEAD_REF") {
+        if trimmed.starts_with("refs/pull/")
+            && let Ok(head) = env::var("GITHUB_HEAD_REF") {
                 let head = head.trim();
                 if !head.is_empty() {
                     return Ok(head.to_string());
                 }
             }
-        }
     }
 
     bail!("Unable to determine branch name from GitHub environment.");
