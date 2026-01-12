@@ -9,6 +9,13 @@ GitHub Action for continuous draft release generation.
 - Resolves version numbers from language archetypes (e.g. Rust `Cargo.toml`).
 - Optional `breezy.yml` config for grouping, templating, and tag/name formats.
 
+### Supported languages/frameworks
+
+- Rust
+- NodeJS
+
+Please raise an issue to request support for your language/framework of choice. PRs also very welcome :)
+
 ## Inputs
 
 - `language` (optional): Language archetype(s) for version detection. If omitted, `breezy.yml` is used.
