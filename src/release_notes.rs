@@ -91,7 +91,7 @@ fn build_changes(pull_requests: &[PullRequestInfo], config: &ReleaseConfig) -> S
                 category_lines.push(apply_change_template(&config.change_template, pull_request));
             }
             if !category_lines.is_empty() {
-                lines.push(format!("## {}", category.title));
+                lines.push(format!("### {}", category.title));
                 lines.extend(category_lines);
                 lines.push(String::new());
             }
@@ -111,7 +111,7 @@ fn build_changes(pull_requests: &[PullRequestInfo], config: &ReleaseConfig) -> S
 
     if !uncategorized.is_empty() {
         if !config.categories.is_empty() {
-            lines.push("## Other Changes".to_string());
+            lines.push("### Other Changes".to_string());
         }
         lines.extend(uncategorized);
         lines.push(String::new());
@@ -222,10 +222,10 @@ mod tests {
             "",
             "## Changes",
             "",
-            "## Features",
+            "### Features",
             "* Add login @alice (https://github.com/o/r/pull/1)",
             "",
-            "## Other Changes",
+            "### Other Changes",
             "* Fix bug @bob (https://github.com/o/r/pull/2)",
         ]
         .join("\n");
