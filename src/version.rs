@@ -36,17 +36,18 @@ fn parse_cargo_version(content: &str) -> Option<String> {
                 let value = rest.trim_start();
                 let quote = value.chars().next();
                 if let Some(quote_char) = quote
-                    && (quote_char == '"' || quote_char == '\'') {
-                        let remainder = &value[quote_char.len_utf8()..];
-                        if let Some(end) = remainder.find(quote_char) {
-                            let parsed = Some(remainder[..end].to_string());
-                            if in_package {
-                                package_version = parsed;
-                            } else if in_workspace_package {
-                                workspace_package_version = parsed;
-                            }
+                    && (quote_char == '"' || quote_char == '\'')
+                {
+                    let remainder = &value[quote_char.len_utf8()..];
+                    if let Some(end) = remainder.find(quote_char) {
+                        let parsed = Some(remainder[..end].to_string());
+                        if in_package {
+                            package_version = parsed;
+                        } else if in_workspace_package {
+                            workspace_package_version = parsed;
                         }
                     }
+                }
             }
         }
     }
@@ -61,8 +62,9 @@ fn resolve_rust_version(cwd: &Path) -> Result<Option<VersionInfo>> {
     }
 
     let content = fs::read_to_string(&file)?;
-    let version = parse_cargo_version(&content)
-        .ok_or_else(|| anyhow!("Cargo.toml does not declare a [package] or [workspace.package] version."))?;
+    let version = parse_cargo_version(&content).ok_or_else(|| {
+        anyhow!("Cargo.toml does not declare a [package] or [workspace.package] version.")
+    })?;
 
     Ok(Some(VersionInfo { version }))
 }
