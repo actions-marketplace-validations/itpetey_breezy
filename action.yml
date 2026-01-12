@@ -5,6 +5,9 @@ inputs:
   language:
     description: Language for version detection
     required: false
+  directory:
+    description: Repo-relative directory containing the manifest to read
+    required: false
   github-token:
     description: GitHub token used to create and update releases
     required: true

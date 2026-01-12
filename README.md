@@ -4,7 +4,7 @@ GitHub Action for continuous draft release generation.
 
 ## What it does
 
-- Creates or updates a single draft release per branch.
+- Creates or updates a single draft release per branch (or per branch + directory).
 - Uses merged PR titles as release notes.
 - Resolves version numbers from language archetypes (e.g. Rust `Cargo.toml`).
 - Optional `breezy.yml` config for grouping, templating, and tag/name formats.
@@ -22,6 +22,9 @@ Please raise an issue to request support for your language/framework of choice. 
 - `github-token` (required): GitHub token used to create/update releases.
 - `tag-prefix` (optional): Prefix for tags when no `tag-template` is set. Default `v`.
 - `config-file` (optional): Path to a `breezy.yml` config.
+- `directory` (optional): Repo-relative directory containing the manifest to read (scopes drafts per branch + directory).
+
+Use `directory` when your repo has multiple sub-projects/manifests and you want independent draft releases per sub-project on the same branch.
 
 ## Config file (`breezy.yml`)
 
@@ -31,8 +34,8 @@ Example:
 
 ```yml
 language: rust
-tag-template: v$VERSION
-name-template: Release $VERSION
+tag-template: $DIRECTORY-$VERSION
+name-template: $DIRECTORY-$VERSION
 categories:
   - title: Features
     labels:
@@ -49,7 +52,7 @@ exclude-labels:
   - skip-log
 change-template: "* $TITLE @$AUTHOR ($NUMBER)"
 template: |
-  ## Changes
+  # Changes
 
   $CHANGES
 ```
@@ -57,6 +60,7 @@ template: |
 Template variables:
 
 - `$VERSION`: Resolved version.
+- `$DIRECTORY`: Directory input (empty when not set).
 - `$TITLE`: PR title.
 - `$AUTHOR`: PR author login.
 - `$NUMBER`: PR URL.
@@ -83,8 +87,36 @@ jobs:
           language: rust
 ```
 
+## Example directory workflow
+
+```yml
+name: Release Breezy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    strategy:
+      matrix:
+        directory:
+          - crates/app
+          - crates/worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          language: rust
+          directory: ${{ matrix.directory }}
+```
+
 ## Prior art
 
 This action is heavily inspired by [release-drafter](https://github.com/release-drafter/release-drafter). There are a few key differences:
 - `breezy` does not attempt to increment the version number - it reads directly from the appropriate manifest
-- `breezy` creates a single release draft per branch
+- `breezy` creates a single release draft per branch by default
+- `breezy` supports multiple sub-projects with separate releases for each

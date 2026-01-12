@@ -11,7 +11,10 @@ pub struct PullRequestInfo {
     pub merged_at: Option<String>,
 }
 
-pub fn release_marker(branch: &str) -> String {
+pub fn release_marker(branch: &str, directory: Option<&str>) -> String {
+    if let Some(directory) = directory.filter(|value| !value.trim().is_empty()) {
+        return format!("<!-- breezy:branch={branch} directory={directory} -->");
+    }
     format!("<!-- breezy:branch={branch} -->")
 }
 
@@ -184,7 +187,7 @@ mod tests {
     #[test]
     fn renders_categories_and_urls() {
         let config = base_config(true);
-        let marker = release_marker("main");
+        let marker = release_marker("main", None);
         let pull_requests = vec![
             PullRequestInfo {
                 number: 1,
@@ -233,9 +236,16 @@ mod tests {
     #[test]
     fn returns_marker_when_no_changes() {
         let config = base_config(false);
-        let marker = release_marker("main");
+        let marker = release_marker("main", None);
         let notes = build_release_notes(&marker, &[], Some(&config));
 
         assert_eq!(notes, marker);
+    }
+
+    #[test]
+    fn marker_includes_directory() {
+        let marker = release_marker("main", Some("crates/app"));
+
+        assert_eq!(marker, "<!-- breezy:branch=main directory=crates/app -->");
     }
 }

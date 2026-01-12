@@ -8,6 +8,7 @@ use config::ReleaseConfig;
 use github::ReleaseInfo;
 use release_notes::{build_release_notes, release_marker};
 use std::env;
+use std::path::Path;
 use version::{is_prerelease_version, parse_languages, resolve_version};
 
 const MAX_PER_PAGE: u32 = 100;
@@ -26,6 +27,7 @@ fn main() {
 
 fn run() -> Result<()> {
     let branch = resolve_branch()?;
+    let directory = resolve_directory(read_input("directory"))?;
     let tag_prefix = read_input("tag-prefix").unwrap_or_else(|| "v".to_string());
     let token = read_input("github-token")
         .or_else(|| env::var("GITHUB_TOKEN").ok())
@@ -44,13 +46,28 @@ fn run() -> Result<()> {
         bail!("No language archetypes provided.");
     }
 
-    let version_info = resolve_version(&cwd, &languages)?;
+    let version_root = match &directory {
+        Some(directory) => cwd.join(directory),
+        None => cwd.clone(),
+    };
+    let version_info = resolve_version(&version_root, &languages)?;
 
-    let tag_name = resolve_tag_name(&version_info.version, &tag_prefix, config.as_ref());
-    let release_name =
-        resolve_release_name(&version_info.version, &tag_name, &branch, config.as_ref());
-    let marker = release_marker(&branch);
+    let tag_name = resolve_tag_name(
+        &version_info.version,
+        &tag_prefix,
+        directory.as_deref(),
+        config.as_ref(),
+    );
+    let release_name = resolve_release_name(
+        &version_info.version,
+        &tag_name,
+        &branch,
+        directory.as_deref(),
+        config.as_ref(),
+    );
+    let marker = release_marker(&branch, directory.as_deref());
     let prerelease = is_prerelease_version(&version_info.version);
+    let scope_label = format_scope_label(&branch, directory.as_deref());
 
     let (owner, repo) = parse_repository()?;
     let client = github::GitHubClient::new(&token, &owner, &repo)?;
@@ -60,10 +77,11 @@ fn run() -> Result<()> {
 
     for release_id in selection.extras {
         client.delete_release(release_id)?;
-        println!("Deleted extra draft release {release_id} for {branch}");
+        println!("Deleted extra draft release {release_id} for {scope_label}");
     }
 
-    let since = select_latest_published_release(&releases, &branch)
+    let marker_filter = directory.as_deref().map(|_| marker.as_str());
+    let since = select_latest_published_release(&releases, &branch, marker_filter)
         .map(|release| {
             release
                 .published_at
@@ -85,7 +103,7 @@ fn run() -> Result<()> {
             prerelease,
             &branch,
         )?;
-        println!("Updated draft release {release_id} for {branch}");
+        println!("Updated draft release {release_id} for {scope_label}");
     } else {
         client.create_release(
             &tag_name,
@@ -94,7 +112,7 @@ fn run() -> Result<()> {
             prerelease,
             &branch,
         )?;
-        println!("Created draft release for {branch}");
+        println!("Created draft release for {scope_label}");
     }
 
     Ok(())
@@ -133,11 +151,22 @@ fn resolve_language(input: &str, config: Option<&ReleaseConfig>) -> Result<Strin
     bail!("Missing required input: language");
 }
 
-fn resolve_tag_name(version: &str, tag_prefix: &str, config: Option<&ReleaseConfig>) -> String {
+fn apply_template(template: &str, version: &str, directory: Option<&str>) -> String {
+    let mut rendered = template.replace("$VERSION", version);
+    rendered = rendered.replace("$DIRECTORY", directory.unwrap_or(""));
+    rendered
+}
+
+fn resolve_tag_name(
+    version: &str,
+    tag_prefix: &str,
+    directory: Option<&str>,
+    config: Option<&ReleaseConfig>,
+) -> String {
     if let Some(config) = config
         && let Some(template) = &config.tag_template
     {
-        return template.replace("$VERSION", version);
+        return apply_template(template, version, directory);
     }
     format!("{}{}", tag_prefix.trim(), version)
 }
@@ -146,14 +175,16 @@ fn resolve_release_name(
     version: &str,
     tag_name: &str,
     branch: &str,
+    directory: Option<&str>,
     config: Option<&ReleaseConfig>,
 ) -> String {
     if let Some(config) = config
         && let Some(template) = &config.name_template
     {
-        return template.replace("$VERSION", version);
+        return apply_template(template, version, directory);
     }
-    format!("{tag_name} ({branch})")
+    let scope = format_scope_label(branch, directory);
+    format!("{tag_name} ({scope})")
 }
 
 fn parse_repository() -> Result<(String, String)> {
@@ -204,6 +235,39 @@ fn resolve_branch() -> Result<String> {
     bail!("Unable to determine branch name from GitHub environment.");
 }
 
+fn resolve_directory(input: Option<String>) -> Result<Option<String>> {
+    let Some(raw) = input else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let mut value = trimmed.trim_end_matches('/');
+    value = value.trim_end_matches('\\');
+    if value == "." {
+        return Ok(None);
+    }
+    if Path::new(value).is_absolute() {
+        bail!("Directory input must be a relative path within the repository.");
+    }
+
+    value = value.trim_start_matches("./");
+    if value.is_empty() || value == "." {
+        return Ok(None);
+    }
+
+    Ok(Some(value.to_string()))
+}
+
+fn format_scope_label(branch: &str, directory: Option<&str>) -> String {
+    if let Some(directory) = directory.filter(|value| !value.trim().is_empty()) {
+        return format!("{branch}/{directory}");
+    }
+    branch.to_string()
+}
+
 fn select_draft_releases(releases: &[ReleaseInfo], marker: &str) -> DraftSelection {
     let mut drafts: Vec<&ReleaseInfo> = releases
         .iter()
@@ -221,10 +285,19 @@ fn select_draft_releases(releases: &[ReleaseInfo], marker: &str) -> DraftSelecti
 fn select_latest_published_release<'a>(
     releases: &'a [ReleaseInfo],
     branch: &str,
+    marker: Option<&str>,
 ) -> Option<&'a ReleaseInfo> {
     let mut published: Vec<&ReleaseInfo> = releases
         .iter()
-        .filter(|release| !release.draft && release.target_commitish == branch)
+        .filter(|release| {
+            if release.draft || release.target_commitish != branch {
+                return false;
+            }
+            if let Some(marker) = marker {
+                return release.body.as_deref().unwrap_or("").contains(marker);
+            }
+            true
+        })
         .collect();
 
     if published.is_empty() {
