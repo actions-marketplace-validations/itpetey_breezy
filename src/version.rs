@@ -26,11 +26,7 @@ pub fn is_prerelease_version(version: &str) -> bool {
     let major = numeric_parts.next().unwrap_or("");
     let minor = numeric_parts.next().unwrap_or("");
     let patch = numeric_parts.next().unwrap_or("");
-    if major.is_empty()
-        || minor.is_empty()
-        || patch.is_empty()
-        || numeric_parts.next().is_some()
-    {
+    if major.is_empty() || minor.is_empty() || patch.is_empty() || numeric_parts.next().is_some() {
         return false;
     }
 
