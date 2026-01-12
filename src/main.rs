@@ -19,7 +19,7 @@ struct DraftSelection {
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{error}");
+        eprintln!("{error:#}");
         std::process::exit(1);
     }
 }

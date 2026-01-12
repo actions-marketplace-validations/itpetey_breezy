@@ -7,5 +7,8 @@ RUN cargo build --release
 
 # Runtime stage
 FROM debian:trixie-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/breezy /usr/local/bin/breezy
 ENTRYPOINT ["/usr/local/bin/breezy"]
