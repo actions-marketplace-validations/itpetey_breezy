@@ -10,6 +10,9 @@ pub struct VersionInfo {
 
 fn parse_cargo_version(content: &str) -> Option<String> {
     let mut in_package = false;
+    let mut in_workspace_package = false;
+    let mut package_version = None;
+    let mut workspace_package_version = None;
 
     for line in content.lines() {
         let trimmed = line.trim();
@@ -19,10 +22,11 @@ fn parse_cargo_version(content: &str) -> Option<String> {
 
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
             in_package = trimmed == "[package]";
+            in_workspace_package = trimmed == "[workspace.package]";
             continue;
         }
 
-        if !in_package {
+        if !in_package && !in_workspace_package {
             continue;
         }
 
@@ -35,14 +39,19 @@ fn parse_cargo_version(content: &str) -> Option<String> {
                     && (quote_char == '"' || quote_char == '\'') {
                         let remainder = &value[quote_char.len_utf8()..];
                         if let Some(end) = remainder.find(quote_char) {
-                            return Some(remainder[..end].to_string());
+                            let parsed = Some(remainder[..end].to_string());
+                            if in_package {
+                                package_version = parsed;
+                            } else if in_workspace_package {
+                                workspace_package_version = parsed;
+                            }
                         }
                     }
             }
         }
     }
 
-    None
+    package_version.or(workspace_package_version)
 }
 
 fn resolve_rust_version(cwd: &Path) -> Result<Option<VersionInfo>> {
@@ -53,7 +62,7 @@ fn resolve_rust_version(cwd: &Path) -> Result<Option<VersionInfo>> {
 
     let content = fs::read_to_string(&file)?;
     let version = parse_cargo_version(&content)
-        .ok_or_else(|| anyhow!("Cargo.toml does not declare a [package] version."))?;
+        .ok_or_else(|| anyhow!("Cargo.toml does not declare a [package] or [workspace.package] version."))?;
 
     Ok(Some(VersionInfo { version }))
 }
@@ -116,4 +125,50 @@ pub fn resolve_version(cwd: &Path, languages: &[String]) -> Result<VersionInfo> 
         "Unable to determine version from {}. Ensure the expected version file exists.",
         attempted.join(", ")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_cargo_version;
+
+    #[test]
+    fn parse_package_version() {
+        let content = r#"
+[package]
+name = "demo"
+version = "0.1.0"
+"#;
+        assert_eq!(parse_cargo_version(content), Some("0.1.0".to_string()));
+    }
+
+    #[test]
+    fn parse_workspace_package_version() {
+        let content = r#"
+[workspace]
+members = ["crate-a"]
+
+[workspace.package]
+version = "1.0.0-alpha.1"
+"#;
+        assert_eq!(
+            parse_cargo_version(content),
+            Some("1.0.0-alpha.1".to_string())
+        );
+    }
+
+    #[test]
+    fn prefer_package_over_workspace_package() {
+        let content = r#"
+[workspace]
+members = ["crate-a"]
+
+[workspace.package]
+version = "2.0.0"
+
+[package]
+name = "demo"
+version = "3.1.4"
+"#;
+        assert_eq!(parse_cargo_version(content), Some("3.1.4".to_string()));
+    }
 }
