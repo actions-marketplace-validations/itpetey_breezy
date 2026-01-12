@@ -14,7 +14,7 @@ pub fn is_prerelease_version(version: &str) -> bool {
         return false;
     }
 
-    let core = trimmed.splitn(2, '+').next().unwrap_or("");
+    let core = trimmed.split('+').next().unwrap_or("");
     let mut core_parts = core.splitn(2, '-');
     let core_version = core_parts.next().unwrap_or("");
     let prerelease = core_parts.next().unwrap_or("");
