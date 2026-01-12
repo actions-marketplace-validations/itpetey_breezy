@@ -81,7 +81,29 @@ fn run() -> Result<()> {
     }
 
     let marker_filter = directory.as_deref().map(|_| marker.as_str());
-    let since = select_latest_published_release(&releases, &branch, marker_filter)
+    let latest_published = select_latest_published_release(&releases, &branch, marker_filter);
+    let current_sha = resolve_current_sha();
+    let skip_create = if selection.primary.is_none() {
+        if let (Some(current_sha), Some(latest_published)) =
+            (current_sha.as_deref(), latest_published)
+        {
+            published_release_matches_commit(&client, latest_published, current_sha)?
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if skip_create {
+        let current_sha = current_sha.as_deref().unwrap_or("unknown");
+        println!(
+            "Skipping draft release for {scope_label} because a published release already exists for commit {current_sha}"
+        );
+        return Ok(());
+    }
+
+    let since = latest_published
         .map(|release| {
             release
                 .published_at
@@ -235,6 +257,19 @@ fn resolve_branch() -> Result<String> {
     bail!("Unable to determine branch name from GitHub environment.");
 }
 
+fn resolve_current_sha() -> Option<String> {
+    env::var("GITHUB_SHA")
+        .ok()
+        .and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+}
+
 fn resolve_directory(input: Option<String>) -> Result<Option<String>> {
     let Some(raw) = input else {
         return Ok(None);
@@ -311,4 +346,20 @@ fn select_latest_published_release<'a>(
     });
 
     published.first().copied()
+}
+
+fn published_release_matches_commit(
+    client: &github::GitHubClient,
+    release: &ReleaseInfo,
+    current_sha: &str,
+) -> Result<bool> {
+    if release.target_commitish == current_sha {
+        return Ok(true);
+    }
+    let tag_name = release.tag_name.trim();
+    if tag_name.is_empty() {
+        return Ok(false);
+    }
+    let release_sha = client.resolve_commit_sha(tag_name)?;
+    Ok(release_sha == current_sha)
 }

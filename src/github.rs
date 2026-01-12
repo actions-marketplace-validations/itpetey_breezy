@@ -9,6 +9,7 @@ const API_BASE: &str = "https://api.github.com";
 #[derive(Debug, Deserialize)]
 pub struct ReleaseInfo {
     pub id: u64,
+    pub tag_name: String,
     pub body: Option<String>,
     pub draft: bool,
     pub target_commitish: String,
@@ -38,6 +39,11 @@ struct SearchUser {
 #[derive(Debug, Deserialize)]
 struct SearchLabel {
     name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommitResponse {
+    sha: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -198,6 +204,22 @@ impl GitHubClient {
             .context("GitHub release create request returned an error.")?;
         let release = response.json()?;
         Ok(release)
+    }
+
+    pub fn resolve_commit_sha(&self, reference: &str) -> Result<String> {
+        let url = format!(
+            "{API_BASE}/repos/{}/{}/commits/{reference}",
+            self.owner, self.repo
+        );
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .context("Failed to fetch commit reference.")?
+            .error_for_status()
+            .context("GitHub commit request returned an error.")?;
+        let commit: CommitResponse = response.json()?;
+        Ok(commit.sha)
     }
 
     pub fn fetch_merged_pull_requests(
