@@ -21,7 +21,7 @@ inputs:
     required: false
 runs:
   using: "docker"
-  image: "docker://ghcr.io/itpetey/breezy:latest"
+  image: "docker://ghcr.io/itpetey/breezy:v0.4.0"
 branding:
   color: "gray-dark"
   icon: "edit"
