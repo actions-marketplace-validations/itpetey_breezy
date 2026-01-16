@@ -4,10 +4,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_CHANGE_TEMPLATE: &str = "$TITLE";
+const DEFAULT_CATEGORY_HEADING_LEVEL: u8 = 2;
 
 #[derive(Debug, Clone)]
 pub struct ReleaseCategory {
     pub title: String,
+    pub heading_level: u8,
     pub labels: Vec<String>,
 }
 
@@ -39,33 +41,46 @@ struct RawConfig {
 
 #[derive(Deserialize)]
 struct RawCategory {
-    title: String,
+    title: Option<String>,
+    h1: Option<String>,
+    h2: Option<String>,
+    h3: Option<String>,
     labels: Option<Vec<String>>,
     label: Option<String>,
 }
 
 impl ReleaseConfig {
-    fn from_raw(raw: RawConfig) -> Self {
+    fn from_raw(raw: RawConfig) -> Result<Self> {
         let categories = raw
             .categories
             .unwrap_or_default()
             .into_iter()
             .map(|category| {
+                let RawCategory {
+                    title,
+                    h1,
+                    h2,
+                    h3,
+                    labels: raw_labels,
+                    label,
+                } = category;
+                let (title, heading_level) = resolve_category_heading(title, h1, h2, h3)?;
                 let mut labels = Vec::new();
-                if let Some(list) = category.labels {
+                if let Some(list) = raw_labels {
                     labels.extend(list);
                 }
-                if let Some(label) = category.label {
+                if let Some(label) = label {
                     labels.push(label);
                 }
-                ReleaseCategory {
-                    title: category.title,
+                Ok(ReleaseCategory {
+                    title,
+                    heading_level,
                     labels: normalize_labels(labels),
-                }
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
 
-        ReleaseConfig {
+        Ok(ReleaseConfig {
             language: raw.language.map(|value| value.trim().to_lowercase()),
             tag_template: raw.tag_template.map(|value| value.trim().to_string()),
             name_template: raw.name_template.map(|value| value.trim().to_string()),
@@ -77,7 +92,7 @@ impl ReleaseConfig {
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| DEFAULT_CHANGE_TEMPLATE.to_string()),
             template: raw.template.map(|value| value.trim().to_string()),
-        }
+        })
     }
 }
 
@@ -128,7 +143,7 @@ fn read_config(path: &Path) -> Result<ReleaseConfig> {
         .with_context(|| format!("Failed to read config file {}", path.display()))?;
     let raw: RawConfig =
         serde_yaml::from_str(&content).map_err(|error| anyhow!("Invalid config YAML: {error}"))?;
-    Ok(ReleaseConfig::from_raw(raw))
+    ReleaseConfig::from_raw(raw)
 }
 
 fn normalize_labels(labels: Vec<String>) -> Vec<String> {
@@ -137,4 +152,107 @@ fn normalize_labels(labels: Vec<String>) -> Vec<String> {
         .map(|label| label.trim().to_lowercase())
         .filter(|label| !label.is_empty())
         .collect()
+}
+
+fn resolve_category_heading(
+    title: Option<String>,
+    h1: Option<String>,
+    h2: Option<String>,
+    h3: Option<String>,
+) -> Result<(String, u8)> {
+    let mut candidates = Vec::new();
+    if let Some(value) = title {
+        candidates.push((value, DEFAULT_CATEGORY_HEADING_LEVEL));
+    }
+    if let Some(value) = h1 {
+        candidates.push((value, 1));
+    }
+    if let Some(value) = h2 {
+        candidates.push((value, 2));
+    }
+    if let Some(value) = h3 {
+        candidates.push((value, 3));
+    }
+
+    match candidates.len() {
+        0 => bail!("Category must include one of: title, h1, h2, h3."),
+        1 => Ok(candidates.remove(0)),
+        _ => bail!("Category must include only one of: title, h1, h2, h3."),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_config(yaml: &str) -> Result<ReleaseConfig> {
+        let raw: RawConfig = serde_yaml::from_str(yaml)?;
+        ReleaseConfig::from_raw(raw)
+    }
+
+    #[test]
+    fn parses_title_as_h2() {
+        let config = parse_config(
+            r#"
+categories:
+  - title: Features
+    labels:
+      - feature
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.categories[0].title, "Features");
+        assert_eq!(config.categories[0].heading_level, 2);
+    }
+
+    #[test]
+    fn parses_explicit_heading_levels() {
+        let config = parse_config(
+            r#"
+categories:
+  - h1: Breaking Changes
+    label: breaking
+  - h2: Features
+    label: feature
+  - h3: Maintenance
+    label: chore
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.categories[0].heading_level, 1);
+        assert_eq!(config.categories[0].title, "Breaking Changes");
+        assert_eq!(config.categories[1].heading_level, 2);
+        assert_eq!(config.categories[1].title, "Features");
+        assert_eq!(config.categories[2].heading_level, 3);
+        assert_eq!(config.categories[2].title, "Maintenance");
+    }
+
+    #[test]
+    fn rejects_multiple_heading_fields() {
+        let result = parse_config(
+            r#"
+categories:
+  - title: Features
+    h2: Duplicate
+    label: feature
+"#,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_missing_heading_field() {
+        let result = parse_config(
+            r#"
+categories:
+  - labels:
+      - feature
+"#,
+        );
+
+        assert!(result.is_err());
+    }
 }

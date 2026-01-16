@@ -57,6 +57,20 @@ template: |
   $CHANGES
 ```
 
+Category headings can be set with `title` (defaults to `h2`) or with `h1`, `h2`, or `h3` keys to control the heading level. Use only one of these keys per category.
+
+Example heading levels:
+
+```yml
+categories:
+  - h1: Breaking Changes
+    label: breaking
+  - h2: Features
+    labels: [feature, enhancement]
+  - h3: Maintenance
+    label: chore
+```
+
 Template variables:
 
 - `$VERSION`: Resolved version.

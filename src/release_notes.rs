@@ -64,6 +64,11 @@ pub fn build_release_notes(
     body.join("\n")
 }
 
+fn format_heading(level: u8, title: &str) -> String {
+    let hashes = "#".repeat(usize::from(level));
+    format!("{hashes} {title}")
+}
+
 fn build_changes(pull_requests: &[PullRequestInfo], config: &ReleaseConfig) -> String {
     let mut seen = HashSet::new();
     let mut ordered = Vec::new();
@@ -91,7 +96,7 @@ fn build_changes(pull_requests: &[PullRequestInfo], config: &ReleaseConfig) -> S
                 category_lines.push(apply_change_template(&config.change_template, pull_request));
             }
             if !category_lines.is_empty() {
-                lines.push(format!("### {}", category.title));
+                lines.push(format_heading(category.heading_level, &category.title));
                 lines.extend(category_lines);
                 lines.push(String::new());
             }
@@ -110,8 +115,8 @@ fn build_changes(pull_requests: &[PullRequestInfo], config: &ReleaseConfig) -> S
     }
 
     if !uncategorized.is_empty() {
-        if !config.categories.is_empty() {
-            lines.push("### Other Changes".to_string());
+        if let Some(category) = config.categories.first() {
+            lines.push(format_heading(category.heading_level, "Other Changes"));
         }
         lines.extend(uncategorized);
         lines.push(String::new());
@@ -172,6 +177,7 @@ mod tests {
             name_template: None,
             categories: vec![ReleaseCategory {
                 title: "Features".to_string(),
+                heading_level: 2,
                 labels: vec!["feature".to_string()],
             }],
             exclude_labels: vec!["skip-log".to_string()],
@@ -222,10 +228,10 @@ mod tests {
             "",
             "## Changes",
             "",
-            "### Features",
+            "## Features",
             "* Add login @alice (https://github.com/o/r/pull/1)",
             "",
-            "### Other Changes",
+            "## Other Changes",
             "* Fix bug @bob (https://github.com/o/r/pull/2)",
         ]
         .join("\n");
